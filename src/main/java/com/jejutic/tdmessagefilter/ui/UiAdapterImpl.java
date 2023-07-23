@@ -3,6 +3,7 @@ package com.jejutic.tdmessagefilter.ui;
 import com.jejutic.tdmessagefilter.domain.Message;
 import it.tdlight.client.*;
 
+import java.util.Objects;
 import java.util.Queue;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicReference;
@@ -49,47 +50,25 @@ public class UiAdapterImpl implements UiAdapter {
 
     @Override
     public synchronized void run(Queue<Message> queue, AtomicReference<Throwable> stopIssue) {
+        UserInterface ui = new FXUserInterface();
+        ui.start();
+
         try {
             while (true) {
                 if (authState.get() != null) {
-                    authState.get().complete(new AuthenticationData() {
-                        @Override
-                        public boolean isQrCode() {
-                            return false;
-                        }
-
-                        @Override
-                        public boolean isBot() {
-                            return false;
-                        }
-
-                        @Override
-                        public String getUserPhoneNumber() {
-                            return "70000080000";
-                        }
-
-                        @Override
-                        public String getBotToken() {
-                            return null;
-                        }
-                    });
+                    authState.get().complete(
+                            new AuthenticationDataImpl(false, false, null, "7")
+                    );  // TODO: consider other login options
                     authState = new AtomicReference<>();
                     System.out.println("AuthenticationData sent");
                 } else if (request != null) {
                     String response = "empty";
-                    switch (parameter) {
-                        case ASK_FIRST_NAME -> {
-                            response = "Mary";
-                            System.out.println("asked first name");
-                        }
-                        case ASK_LAST_NAME -> {
-                            response = "Sue";
-                            System.out.println("asked last name");
-                        }
-                        case ASK_CODE -> System.out.println("asked code");
-                        case ASK_PASSWORD -> System.out.println("asked password");
-                        case NOTIFY_LINK -> System.out.println("Something with qr code");
-                        case TERMS_OF_SERVICE -> System.out.println("Terms of service");
+                    if (Objects.requireNonNull(parameter) == InputParameter.ASK_CODE) {
+                        System.out.println("asked code");
+                    } else {
+                        throw new UnsupportedOperationException(
+                                "Option " + parameter.name() + " is not supported"
+                        );
                     }
                     request.complete(response);
                     request = null;

@@ -4,7 +4,6 @@ import com.jejutic.tdmessagefilter.api.ApiWorker;
 import com.jejutic.tdmessagefilter.domain.Message;
 import com.jejutic.tdmessagefilter.ui.UiAdapter;
 import com.jejutic.tdmessagefilter.ui.UiAdapterImpl;
-import it.tdlight.client.AuthenticationSupplier;
 
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicReference;
@@ -31,7 +30,7 @@ public final class Runner implements Runnable {
                 () -> api.run(ui, ui, queue, stopIssue)
 //                    () -> api.run(AuthenticationSupplier.consoleLogin(), null, queue, stopIssue)
         );
-        apiThread.start();
+//        apiThread.start();
 
         try {
             while (!uiThread.isInterrupted() && !apiThread.isInterrupted()) {
