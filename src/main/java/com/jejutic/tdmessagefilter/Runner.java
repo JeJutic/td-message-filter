@@ -1,8 +1,13 @@
 package com.jejutic.tdmessagefilter;
 
 import com.jejutic.tdmessagefilter.api.ApiWorker;
+import com.jejutic.tdmessagefilter.domain.Message;
 import com.jejutic.tdmessagefilter.ui.UiAdapter;
 import com.jejutic.tdmessagefilter.ui.UiAdapterImpl;
+import it.tdlight.client.AuthenticationSupplier;
+
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Example class for TDLight Java
@@ -13,36 +18,39 @@ public final class Runner implements Runnable {
 
     UiAdapter ui = new UiAdapterImpl();
     ApiWorker api = new ApiWorker();
-    private final StopIssue stopIssue = new StopIssue();
-
-    public static class StopIssue {
-        private Throwable cause = null;
-
-        public void setCause(Throwable cause) {
-            this.cause = cause;
-        }
-    }
+    private final AtomicReference<Throwable> stopIssue = new AtomicReference<>();
+    private final ConcurrentLinkedQueue<Message> queue = new ConcurrentLinkedQueue<>();
 
     @Override
     public void run() {
-        try {
-            Thread uiThread = new Thread(ui);
-            Thread apiThread = new Thread(() ->
-                    api.run(ui.authenticationSupplier(), stopIssue));
+        Thread uiThread = new Thread(
+                () -> ui.run(queue, stopIssue)
+        );
+        uiThread.start();
+        Thread apiThread = new Thread(
+                () -> api.run(ui, ui, queue, stopIssue)
+//                    () -> api.run(AuthenticationSupplier.consoleLogin(), null, queue, stopIssue)
+        );
+        apiThread.start();
 
-            while (!uiThread.isAlive() && !apiThread.isAlive() ) {
+        try {
+            while (!uiThread.isInterrupted() && !apiThread.isInterrupted()) {
                 synchronized (stopIssue) {
-                    stopIssue.wait();
+                    if (!uiThread.isInterrupted() && !apiThread.isInterrupted()) {
+                        stopIssue.wait();
+                    }
                 }
             }
-            if (stopIssue.cause != null) { // app was just closed or internal error raised in gui or api lib
-                System.out.println(stopIssue.cause.getMessage());
+            Throwable issue = stopIssue.get();
+            if (issue != null) {
+                System.out.println("Error with libraries or synchronization: " + issue.getMessage());
             }
-            uiThread.interrupt();
-            apiThread.interrupt();
         } catch (InterruptedException e) {
             System.out.println(e.getMessage());
             Thread.currentThread().interrupt();
+        } finally {
+            uiThread.interrupt();
+            apiThread.interrupt();
         }
     }
 }

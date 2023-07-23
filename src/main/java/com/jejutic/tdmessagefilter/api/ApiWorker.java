@@ -1,17 +1,17 @@
 package com.jejutic.tdmessagefilter.api;
 
-import com.jejutic.tdmessagefilter.Runner;
+import com.jejutic.tdmessagefilter.domain.Message;
 import it.tdlight.Init;
 import it.tdlight.client.*;
 import it.tdlight.jni.TdApi;
 import it.tdlight.jni.TdApi.AuthorizationState;
-import it.tdlight.jni.TdApi.Chat;
 import it.tdlight.jni.TdApi.MessageContent;
 import it.tdlight.util.UnsupportedNativeLibraryException;
 
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.concurrent.Callable;
+import java.util.Queue;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Example class for TDLight Java
@@ -22,7 +22,8 @@ public final class ApiWorker {
 
     private static SimpleTelegramClient client;
 
-    public void run(AuthenticationSupplier<?> authenticationData, Runner.StopIssue stopIssue) {
+    public void run(AuthenticationSupplier<?> authenticationData, ClientInteraction clientInteraction,
+                    final Queue<Message> queue, AtomicReference<Throwable> stopIssue) {
         try {
             // Initialize TDLight native libraries
             Init.init();
@@ -35,7 +36,6 @@ public final class ApiWorker {
                 // var apiToken = new APIToken(your-api-id-here, "your-api-hash-here");
                 //
                 APIToken apiToken = APIToken.example();
-
 
                 // Configure the client
                 TDLibSettings settings = TDLibSettings.create(apiToken);
@@ -53,15 +53,24 @@ public final class ApiWorker {
                 //            SimpleAuthenticationSupplier<?> authenticationData = AuthenticationSupplier.testUser(7381);
 //                AuthenticationSupplier<?> authenticationData = AuthenticationSupplier.consoleLogin();
 
+                // This is an example, remove this line to use the real telegram datacenters!
+//                settings.setUseTestDatacenter(true);
+
+                clientBuilder.setClientInteraction(clientInteraction);
 
                 // Add an example update handler that prints when the bot is started
                 clientBuilder.addUpdateHandler(TdApi.UpdateAuthorizationState.class, ApiWorker::onUpdateAuthorizationState);
 
                 // Add an example update handler that prints every received message
-                clientBuilder.addUpdateHandler(TdApi.UpdateNewMessage.class, ApiWorker::onUpdateNewMessage);
+                clientBuilder.addUpdateHandler(TdApi.UpdateNewMessage.class,
+                        (update) -> onUpdateNewMessage(update, queue));
+
+                System.out.println("I wanna build");
 
                 // Create and start the client
                 client = clientBuilder.build(authenticationData);
+
+                System.out.println("Waiting for exit");
 
                 // Wait for exit
                 client.waitForExit();
@@ -69,14 +78,15 @@ public final class ApiWorker {
         } catch (UnsupportedNativeLibraryException | InterruptedException e) {
             System.out.println(e.getMessage());
             Thread.currentThread().interrupt();
-            stopIssue.setCause(e);
+            stopIssue.compareAndSet(null, e);
+            stopIssue.notify();
         }
     }
 
     /**
      * Print new messages received via updateNewMessage
      */
-    private static void onUpdateNewMessage(TdApi.UpdateNewMessage update) {
+    private static void onUpdateNewMessage(TdApi.UpdateNewMessage update, Queue<Message> queue) {
         // Get the message content
         MessageContent messageContent = update.message.content;
 
@@ -90,16 +100,17 @@ public final class ApiWorker {
             text = String.format("(%s)", messageContent.getClass().getSimpleName());
         }
 
-        // Get the chat title
-        client.send(new TdApi.GetChat(update.message.chatId), chatIdResult -> {
-            // Get the chat response
-            Chat chat = chatIdResult.get();
-            // Get the chat name
-            String chatName = chat.title;
-
-            // Print the message
-            System.out.printf("Received new message from chat %s: %s%n", chatName, text);
-        });
+//        // Get the chat title
+//        client.send(new TdApi.GetChat(update.message.chatId), chatIdResult -> {
+//            // Get the chat response
+//            Chat chat = chatIdResult.get();
+//            // Get the chat name
+//            String chatName = chat.title;
+//
+//            // Print the message
+//            System.out.printf("Received new message from chat %s: %s%n", chatName, text);
+//        });
+        queue.add(new Message(text));
     }
 
     /**
