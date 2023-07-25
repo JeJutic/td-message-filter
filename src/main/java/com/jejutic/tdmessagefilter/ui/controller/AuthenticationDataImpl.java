@@ -1,4 +1,4 @@
-package com.jejutic.tdmessagefilter.ui;
+package com.jejutic.tdmessagefilter.ui.controller;
 
 import it.tdlight.client.AuthenticationData;
 
