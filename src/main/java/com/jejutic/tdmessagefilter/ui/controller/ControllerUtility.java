@@ -4,7 +4,7 @@ import javafx.event.ActionEvent;
 import javafx.scene.Node;
 import javafx.stage.Stage;
 
-public class ControllerUtility {
+class ControllerUtility {
 
     static void closeSummonedStage(ActionEvent event) {
         Node source = (Node) event.getSource();

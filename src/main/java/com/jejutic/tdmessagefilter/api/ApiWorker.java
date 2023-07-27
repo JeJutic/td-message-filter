@@ -1,95 +1,71 @@
 package com.jejutic.tdmessagefilter.api;
 
 import com.jejutic.tdmessagefilter.ui.NewMessageHandler;
+import com.jejutic.tdmessagefilter.ui.UpdateAuthorizationStateHandler;
 import it.tdlight.Init;
 import it.tdlight.client.*;
 import it.tdlight.jni.TdApi;
-import it.tdlight.jni.TdApi.AuthorizationState;
 import it.tdlight.util.UnsupportedNativeLibraryException;
-import javafx.util.Pair;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.CompletableFuture;
 
-public final class ApiWorker {
+public class ApiWorker {
 
-    public void run(AtomicReference<Pair<SimpleTelegramClient, Boolean>> sharedClientMark,
-                    Pair<SimpleTelegramClient, Boolean> startingState,
+    private static final Logger log = LogManager.getLogger(ApiWorker.class);
+
+    public void run(CompletableFuture<SimpleTelegramClient> clientCf,
                     AuthenticationSupplier<?> authenticationData,
                     ClientInteraction clientInteraction,
-                    NewMessageHandler newMessageHandler)
+                    NewMessageHandler newMessageHandler,
+                    UpdateAuthorizationStateHandler updateAuthorizationStateHandler)
             throws UnsupportedNativeLibraryException {
-        // Initialize TDLight native libraries
-        Init.init();
 
-        // Create the client factory
+        log.info("Initialising TD native library...");
+        Init.init();
+        log.info("TD native library initialised");
+
         try (SimpleTelegramClientFactory clientFactory = new SimpleTelegramClientFactory()) {
 
-            // Obtain the API token
-            //
-            // var apiToken = new APIToken(your-api-id-here, "your-api-hash-here");
-            //
-                APIToken apiToken = APIToken.example();
+            APIToken apiToken = APIToken.example();
 
-            // Configure the client
             TDLibSettings settings = TDLibSettings.create(apiToken);
 
-            // Configure the session directory
-            Path sessionPath = Paths.get("example-tdlight-session");
+            Path sessionPath = Paths.get("session");
             settings.setDatabaseDirectoryPath(sessionPath.resolve("data"));
             settings.setDownloadedFilesDirectoryPath(sessionPath.resolve("downloads"));
 
-            // Prepare a new client builder
+            settings.setChatInfoDatabaseEnabled(false);
+            settings.setFileDatabaseEnabled(false);
+            settings.setMessageDatabaseEnabled(false);
+
             SimpleTelegramClientBuilder clientBuilder = clientFactory.builder(settings);
 
-            // Configure the authentication info
-            // Replace with AuthenticationSupplier.consoleLogin(), or .user(xxx), or .bot(xxx);
-            //            SimpleAuthenticationSupplier<?> authenticationData = AuthenticationSupplier.testUser(7381);
-//                AuthenticationSupplier<?> authenticationData = AuthenticationSupplier.consoleLogin();
-
-            // This is an example, remove this line to use the real telegram datacenters!
-//                settings.setUseTestDatacenter(true);
-
             clientBuilder.setClientInteraction(clientInteraction);
-
-            // Add an example update handler that prints when the bot is started
-            clientBuilder.addUpdateHandler(TdApi.UpdateAuthorizationState.class, ApiWorker::onUpdateAuthorizationState);
-
-            // Add an example update handler that prints every received message
+            clientBuilder.addUpdateHandler(TdApi.UpdateAuthorizationState.class, updateAuthorizationStateHandler);
             clientBuilder.addUpdateHandler(TdApi.UpdateNewMessage.class, newMessageHandler);
 
-            System.out.println("I wanna build");
+            log.debug("TDLight library is ready to build the client");
 
             SimpleTelegramClient client = clientBuilder.build(authenticationData);
             newMessageHandler.setSimpleTelegramClient(client);
 
-            if (sharedClientMark.compareAndSet(startingState, new Pair<>(client, false))) {
-                System.out.println("Waiting for exit");
+            if (clientCf.complete(client)) {
+                log.info("TDLight client is ready. Waiting for exit");
                 client.waitForExit();
-                System.out.println("client exited");
+                log.info("TDLight client exited");
             } else {
-                System.out.println(sharedClientMark.get().getKey() + " " + sharedClientMark.get().getValue());
+                log.debug(
+                        "The application started closing before client became available: {}",
+                        clientCf
+                );
             }
         } catch (InterruptedException e) {
-            System.out.println("Msg: " + e.getMessage());
+            log.error("TD thread was suddenly interrupted", e);
             Thread.currentThread().interrupt();
-        }
-    }
-
-    /**
-     * Print the bot status
-     */
-    private static void onUpdateAuthorizationState(TdApi.UpdateAuthorizationState update) {
-        AuthorizationState authorizationState = update.authorizationState;
-        if (authorizationState instanceof TdApi.AuthorizationStateReady) {
-            System.out.println("Logged in");
-        } else if (authorizationState instanceof TdApi.AuthorizationStateClosing) {
-            System.out.println("Closing...");
-        } else if (authorizationState instanceof TdApi.AuthorizationStateClosed) {
-            System.out.println("Closed");
-        } else if (authorizationState instanceof TdApi.AuthorizationStateLoggingOut) {
-            System.out.println("Logging out...");
         }
     }
 }
